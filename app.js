@@ -1,112 +1,120 @@
-if(process.env.NODE_ENV != "prodution"){
-require("dotenv").config();
+if (process.env.NODE_ENV !== "production") {
+    require("dotenv").config();
 }
 
 const express = require('express');
-const app = express();
 const mongoose = require('mongoose');
-const port = 8080;
-const Listing =require("./models/listing.js");
+const app = express();
 const path = require("path");
 const methodOverride = require("method-override");
 const ejsMate = require("ejs-mate");
-const wrapAsync = require("./utils/wrapAsync.js");
-const Expresserror = require("./utils/Expresserror.js");
-const Review = require("./models/review.js");
-const session= require("express-session");
+const session = require("express-session");
 const MongoStore = require('connect-mongo');
 const flash = require("connect-flash");
 const passport = require("passport");
 const LocalStrategy = require("passport-local");
 const User = require("./models/user.js");
-const {isLoggedIn}= require("./middleware.js");
+const Listing = require("./models/listing.js");
 
-const listingRouter = require("./routes/listing.js");
-const reviewRouter = require("./routes/review.js");
-const userRouter = require("./routes/user.js");
-
+// Cloudinary
+const cloudinary = require("cloudinary").v2;
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const multer = require("multer");
 
 const dbUrl = process.env.ATLASDB_URL;
+const PORT = process.env.PORT || 8080;
 
-main()
-.then(() =>{
-    console.log("Connected to DB");
-})
-.catch((err) =>{ 
-    console.log(err);
+// Configure Cloudinary
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_KEY,
+    api_secret: process.env.CLOUDINARY_SECRET
 });
 
-async function main(){
-    await mongoose.connect(dbUrl);
-}
+const storage = new CloudinaryStorage({
+    cloudinary,
+    params: {
+        folder: "Airbnd-Uploads",
+        allowed_formats: ["jpeg", "png", "jpg"]
+    }
+});
+const upload = multer({ storage });
 
-app.set("view engine","ejs");
-app.set("views",path.join(__dirname,"views"));
+// Connect to MongoDB and start server
+async function main() {
+    try {
+        await mongoose.connect(dbUrl);
+        console.log("✅ MongoDB connected");
+
+        app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    } catch (err) {
+        console.error("❌ MongoDB connection error:", err);
+        process.exit(1);
+    }
+}
+main();
+
+// EJS + static files
+app.set("view engine", "ejs");
+app.set("views", path.join(__dirname, "views"));
+app.engine('ejs', ejsMate);
 app.use(express.urlencoded({ extended: true }));
 app.use(methodOverride("_method"));
-app.engine('ejs',ejsMate);
-app.use(express.static(path.join(__dirname,"/public")));
+app.use(express.static(path.join(__dirname, "public")));
 
-
+// Session + Flash
 const store = MongoStore.create({
     mongoUrl: dbUrl,
-    crypto :{
-         secret :process.env.SECRET,
-    },
-    touchAfter:24 * 3600 ,
+    crypto: { secret: process.env.SECRET },
+    touchAfter: 24 * 3600
 });
 
-const sessionOptions ={
+app.use(session({
     store,
-    secret :process.env.SECRET,
-    resave :false,
-   saveUninitialized : true,
-   cookie: {
-    expire: Date.now() + 7 * 24 * 60 * 60 * 1000,
-    maxAge: 7 * 24 *60 * 60 *1000,
-    httpOnly :true,
-   }
-}
+    secret: process.env.SECRET,
+    resave: false,
+    saveUninitialized: true,
+    cookie: { maxAge: 7*24*60*60*1000, httpOnly: true }
+}));
 
-
-app.use(session(sessionOptions));
 app.use(flash());
 
+// Passport
 app.use(passport.initialize());
 app.use(passport.session());
 passport.use(new LocalStrategy(User.authenticate()));
-
 passport.serializeUser(User.serializeUser());
-passport.deserializeUser(User.deserializeUser()); 
+passport.deserializeUser(User.deserializeUser());
 
-app.get("/" ,(req,res)=>{
-    res.send("Hello there !! ");
-})
-  
-    app.use((req,res,next)=>{
-        res.locals.success = req.flash("success");
-        res.locals.error = req.flash("error");
-        res.locals.currUser = req.user;
-        next();
-    })
-
-     
-
-
-     app.use("/listings" , listingRouter);
-  
-     app.use("/listings/:id/reviews",reviewRouter);
-
-     app.use("/",userRouter);
-
-
-app.use((err, req, res, next) => {
-  const { statusCode = 500, message = "Something went wrong" } = err;
-  res.status(statusCode).render("error.ejs", { statusCode, message });
+// Flash + current user middleware
+app.use((req, res, next) => {
+    res.locals.success = req.flash("success");
+    res.locals.error = req.flash("error");
+    res.locals.currUser = req.user;
+    next();
 });
 
+// Routes
+app.get("/", (req, res) => res.send("Hello there!!"));
 
+// Example listing route with Cloudinary upload
+app.post("/listings", upload.single("image"), async (req, res) => {
+    const listing = new Listing(req.body.listing);
+    if (req.file) {
+        listing.image = { url: req.file.path, filename: req.file.filename };
+    }
+    await listing.save();
+    req.flash("success", "Listing created!");
+    res.redirect("/listings");
+});
 
-app.listen(8080,()=>{
-    console.log("Server is listing with port 8080");
-})
+// Your other routers
+app.use("/listings", require("./routes/listing.js"));
+app.use("/listings/:id/reviews", require("./routes/review.js"));
+app.use("/", require("./routes/user.js"));
+
+// Error handler
+app.use((err, req, res, next) => {
+    const { statusCode = 500, message = "Something went wrong" } = err;
+    res.status(statusCode).render("error.ejs", { statusCode, message });
+});
