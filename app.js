@@ -95,7 +95,10 @@ app.use((req, res, next) => {
 });
 
 // Routes
-app.get("/", (req, res) => res.send("Hello there!!"));
+app.get("/", (req, res) => {
+    res.redirect("/listings");
+});
+
 
 // Example listing route with Cloudinary upload
 app.post("/listings", upload.single("image"), async (req, res) => {
