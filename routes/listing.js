@@ -14,7 +14,7 @@ const ListingController = require("../controllers/listings.js");
 router
   .route("/")
   .get(wrapAsync(ListingController.index))
-  // Corrected upload: just 'image', not 'listing[image]'
+  // add listing
   .post(isLoggedIn, upload.single("image"), wrapAsync(ListingController.createListing));
 
 // Route to render "new listing" form

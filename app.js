@@ -26,18 +26,18 @@ const PORT = process.env.PORT || 8080;
 
 // Configure Cloudinary
 cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_KEY,
-    api_secret: process.env.CLOUDINARY_SECRET
+    cloud_name: process.env.CLOUD_NAME,
+    api_key: process.env.CLOUD_API_KEY,
+    api_secret: process.env.CLOUDI_API_SECRET
 });
 
 const storage = new CloudinaryStorage({
     cloudinary,
     params: {
-        folder: "Airbnd-Uploads",
+        folder: "wanderlust_DEV",
         allowed_formats: ["jpeg", "png", "jpg"]
     }
-});
+}); 
 const upload = multer({ storage });
 
 // Connect to MongoDB and start server
